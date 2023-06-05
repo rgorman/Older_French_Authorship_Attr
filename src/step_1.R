@@ -1,14 +1,15 @@
 library(udpipe)
 library(readtext)
 library(tidyverse)
+library(magrittr)
 
+################# this section parses a txt file, converts the output to a data frame and saves it as a RDS file
 
 # load language model (switch to appropriate dir)
 udmodel <- udpipe_load_model(file = "french-gsd-ud-2.5-191206.udpipe")
 
 # make vector of file names (switch to appropriate dir)
 files.v <- dir(pattern = ".txt")
-
 
 
 for (i in seq_along(files.v)) {
@@ -35,17 +36,41 @@ for (i in seq_along(files.v)) {
   
 }
 
+############# end of parsing section
+
+#################
+################ this section reads in a csv file; the Labe data seems to work better when originally saved (via excel) as an UTF-8 csv
+
+files.v <- dir(pattern = ".csv")
 
 
 
+for (i in seq_along(files.v)) { # a loop to open csv files and save them as .RDS files; creating a separate output directory is recommended
+  
+  working.df <-  read.csv(file = files.v[1])
+  
+ 
+  
+  op <- gsub(".csv", ".RDS", files.v[i])
+  saveRDS(working.df, file = op )
+  
+  
+}
+
+######## end of code to open csv and save as RDS
+#########################################
+
+
+########### a code block to provide a vector of the type of morphological features  produced by the parser
+### these features may differ by language and parser; for this reason they should not be hard coded by extracted dynamically
 # code for splitting features 
 
 
-# change to dir containing results of above loop
+# change to dir containing .RDS files produced by of above loop
 files.v <- dir(pattern = ".RDS") # load filenames into vector
 
-##
-working.df <- readRDS(files.v[1])
+working.df <- readRDS(files.v[1]) # load a file; only a single file is needed for this section
+
 
 ### create vectors of col names for morphology of target and parent tokens
 
@@ -55,6 +80,7 @@ z <- working.df$feats %>%
 m <- ncol(z) # for loop: number of cols in z
 
 morphs.v <- NULL # vector to store results of loop
+
 
 
 for (j in seq_len(m)) { # loop through cols of z
@@ -81,7 +107,7 @@ morphs.v[which(is.na(morphs.v))] <- "Not_App" # rename NA: this is not an accept
 self_names.v <- paste0("self_", morphs.v) # vector of col names for target word
 parent_names_v <- paste0("parent_", morphs.v) # vector of col names for parent of target
 
-
+############## end of preliminary code to provide vector of feature types
 
 ###
 #### loop to populate morpho-syntactic cols
@@ -219,18 +245,31 @@ for (i in seq_along(files.v)) {
   x <- as.numeric(x)
   holder <- c(holder, x)
   
+  
 }
 
 summary(abs(holder) )
 
 
+for (i in seq_along(files.v)) {
+  
+  working.df <- readRDS(files.v[i])
+  # bin the dd
+  working.df[, "self_binned_dd"]  <- abs(working.df$self_dd)
+  working.df$self_binned_dd[which(working.df$self_binned_dd >= 3)] <- "gt_2"
+  
+  working.df[, "parent_binned_dd"] <- working.df$self_binned_dd[working.df$global_parent_id]
+  
+  saveRDS(working.df, files.v[i])
+}
 
-# bin the dd
-working.df[, "self_binned_dd"]  <- abs(working.df$self_dd)
-working.df$self_binned_dd[which(working.df$self_binned_dd >= 3)] <- "gt_2"
 
-working.df[, "parent_binned_dd"] <- working.df$self_binned_dd[working.df$global_parent_id]
 
+
+
+######################### code to find the most frequent variables
+
+working.df <- readRDS(files.v[1]) ## best to use a sample drawn from each file in the corpus
 
 x <- working.df %>% # make vector of col names
   colnames()
@@ -246,7 +285,7 @@ x <- x[-which(x =="parent_dd")]
 
 selected.cols.v <- x  # these are the cols for variables
 
-# a loop to make all possible combinations of names in vector of selected cols
+# a loop to make all possible combinations of names in vector of selected cols; here we limit to combinations of 1 to 3 variable types
 selected_vars.list <- vector(mode = "list", 3) # make list to store results
 nomina.v <- NULL # vector to store names of list elements
 
@@ -264,11 +303,6 @@ for (i in seq_along(files.v)) {
   
   working.df <- readRDS(file = files.v[i]) # read in files in directory
   
-  # bin the dd
-  working.df[, "self_binned_dd"]  <- abs(working.df$self_dd)
-  working.df$self_binned_dd[which(working.df$self_binned_dd >= 3)] <- "gt_2"
-  
-  working.df[, "parent_binned_dd"] <- working.df$self_binned_dd[working.df$global_parent_id]
   
   working.df <-   working.df[, selected.cols.v] # drop metadata and keep only relevant columns as selected above
   
@@ -292,7 +326,7 @@ sample.df <- do.call(rbind, holder.l) # combine results into single data frame
 # make 2 col data frame: each row is a unique simplex name-value pair, e.g. name = "parent_voice," value = "ACT", followed by the count of that pair
 
 freq.tib_simplex <- gather(sample.df[,   ], variable_name, variable_value,  na.rm = TRUE) %>%
-  mutate(combined = paste(paste(variable_name, variable_value, sep = "_Is_"))) %>%
+  mutate(combined = paste(paste(variable_name, variable_value, sep = "_ISA_"))) %>%
   select( combined) %>%
   group_by( combined) %>%
   summarize(freq = n())  %>%
@@ -306,7 +340,7 @@ var_1 <- sapply(selected_vars.list[[2]], `[`, 1)
 var_2 <- sapply(selected_vars.list[[2]], `[`, 2)
 
 
-nomen.v <- paste(var_1, var_2, sep = "_And_") # combine simplex variable names into a combined name: e.g, "self_POS_And_self_rel"
+nomen.v <- paste(var_1, var_2, sep = "_AND_") # combine simplex variable names into a combined name: e.g, "self_POS_And_self_rel"
 # make matrix to store duplex name-value pairs
 r <- nrow(sample.df)
 c <- length(nomen.v)
@@ -317,7 +351,7 @@ colnames(duplex_sample.df) <- nomen.v
 # a loop to populate cols with values; values taken from original sample.df
 for (i in seq_along(var_1)) {
   
-  duplex_sample.df[, nomen.v[i]] <- paste(unlist(sample.df[, var_1[i]]), unlist(sample.df[, var_2[i] ]), sep = "_And_")
+  duplex_sample.df[, nomen.v[i]] <- paste(unlist(sample.df[, var_1[i]]), unlist(sample.df[, var_2[i] ]), sep = "_AND_")
   
 }
 
@@ -327,7 +361,7 @@ duplex_sample.df <- as.data.frame(duplex_sample.df) # convert matrix to data fra
 # make 2 col data frame: each row is a unique duplex name-value pair
 
 freq.tib_two_plex <- gather(duplex_sample.df[,  ], variable_name, variable_value,  na.rm = TRUE) %>%
-  mutate(combined = paste(paste(variable_name, variable_value, sep = "_Are_"))) %>%
+  mutate(combined = paste(paste(variable_name, variable_value, sep = "_ISA_"))) %>%
   select( combined) %>%
   group_by( combined) %>%
   summarize(freq = n())  %>%
@@ -342,7 +376,7 @@ var_1 <- sapply(selected_vars.list[[3]], `[`, 1)
 var_2 <- sapply(selected_vars.list[[3]], `[`, 2)
 var_3 <- sapply(selected_vars.list[[3]], `[`, 3)
 
-nomen.v <- paste(var_1, var_2, var_3, sep = "_And_")
+nomen.v <- paste(var_1, var_2, var_3, sep = "_AND_")
 
 r <- nrow(sample.df)
 c <- length(nomen.v)
@@ -354,14 +388,14 @@ colnames(triplex_sample.df) <- nomen.v
 for (i in seq_along(var_1)) {
   
   triplex_sample.df[, nomen.v[i]] <- paste( unlist(sample.df[, var_1[i]]), unlist(sample.df[, var_2[i] ]), 
-                                            unlist(sample.df[, var_3[i] ]),         sep = "_And_")
+                                            unlist(sample.df[, var_3[i] ]),         sep = "_AND_")
   
 }
 
 triplex_sample.df <- as.data.frame(triplex_sample.df)
 
 freq.tib_three_plex <- gather(triplex_sample.df[,  ], variable_name, variable_value,  na.rm = TRUE) %>%
-  mutate(combined = paste(paste(variable_name, variable_value, sep = "_Are_"))) %>%
+  mutate(combined = paste(paste(variable_name, variable_value, sep = "_ISA_"))) %>%
   select( combined) %>%
   group_by( combined) %>%
   summarize(freq = n())  %>%
@@ -433,7 +467,7 @@ three_tuple_vars.tib <- readRDS(file = "three_plex_5pc.RDS")
 ##############
 
 simplex_comb.l <- simplex_vars.tib$combined %>% #split variable and value and store in list object
-  str_split("_Is_")
+  str_split("_ISA_")
 
 
 # split variable and value and store in list object
@@ -441,33 +475,33 @@ simplex_comb.l <- simplex_vars.tib$combined %>% #split variable and value and st
 # the first element of each vector contains var name, the second contains var value
 
 two_comb.l <- two_tuple_vars.tib$combined %>%
-  str_split("_Are_")
+  str_split("_ISA_")
 
 # split the var name of each list element into component parts and store in new list
 # each list element contains a vector with 2 elements
 two_var.l <- sapply(two_comb.l, extract, 1) %>% # extract() needs package magrittr
-  str_split("_And_")
+  str_split("_AND_")
 
 # split the value name of each list element into component parts and store in  new list
 # each list element contains a vector with 2 elements
 two_val.l <- sapply(two_comb.l, extract, 2) %>%
-  str_split("_And_")
+  str_split("_AND_")
 
 # split variable and value and store in list object
 # there is one vector per list element
 # the first element of each vector contains var name, the second contains var value
 three_comb.l <- three_tuple_vars.tib$combined %>%
-  str_split("_Are_")
+  str_split("_ISA_")
 
 # split the var name of each list element into component parts and store in new list
 # each list element contains a vector with 3 elements
 three_var.l <- sapply(three_comb.l, extract, 1) %>%
-  str_split("_And_")
+  str_split("_AND_")
 
 # split the value name of each list element into component parts and store in  new list
 # each list element contains a vector with 3 elements
 three_val.l <- sapply(three_comb.l, extract, 2) %>%
-  str_split("_And_")
+  str_split("_AND_")
 
 
 
@@ -503,7 +537,7 @@ for (i in seq_along(files.v)) {
   
   # a loop for simplex var-val pairs
   
-  working.df$self
+ 
   
   
   for (j in seq_along(simplex_comb.l)) {
@@ -552,10 +586,12 @@ for (i in seq_along(files.v)) {
     
   }
   
+  file.path("..", "binary_val")
+  
   file_name <- paste0(file_name,   "_binary_val",  ".RDS") # add file type to file name for saving
   
   # ! make sub directory in current working directory called "binary_valued." Otherwise the following lines will not work!
-  fp <- file.path("binary_valued", file_name) # file path for save
+  fp <- file.path("..", "binary_val", file_name) # file path for save
   
   saveRDS(target.df, file = fp) # save one-hot file to disk
   
