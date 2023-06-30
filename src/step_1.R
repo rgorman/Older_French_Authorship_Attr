@@ -93,7 +93,7 @@ for (j in seq_len(m)) { # loop through cols of z
   
   b <- z[, j] %>% 
     str_split(., "=") %>% # split name from value for each pair
-    sapply(., magrittr::extract, 2) # extract and keep only vales, not names
+    sapply(., magrittr::extract, 2) # extract and keep only values, not names
   
   
   
